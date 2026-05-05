@@ -1,0 +1,359 @@
+================================================================================
+DEPLOYMENT GUIDE - FRAUD DETECTION SYSTEM
+================================================================================
+
+Complete guide for deploying with database, authentication, and containers.
+
+================================================================================
+1. LOCAL DEVELOPMENT WITH DOCKER COMPOSE
+================================================================================
+
+Prerequisites:
+  • Docker installed
+  • Docker Compose installed
+  • Git
+
+Steps:
+
+1. Clone repository
+   git clone <repo> fraud-detection
+   cd fraud-detection
+
+2. Copy deployment files
+   cp -r DEPLOYMENT_FILES/* .
+
+3. Create .env file
+   cat > .env << 'EOF'
+   DATABASE_URL=postgresql://fraud_user:fraud_password_123@postgres:5432/fraud_detection
+   REDIS_URL=redis://redis:6379
+   SECRET_KEY=your-secret-key-change-in-production
+   LOG_LEVEL=INFO
+   EOF
+
+4. Start services
+   docker-compose up -d
+
+5. Wait for services
+   docker-compose ps
+   # All should show "healthy"
+
+6. Access services:
+   • API: http://localhost:8000
+   • API Docs: http://localhost:8000/docs
+   • Database: localhost:5432
+   • PgAdmin: http://localhost:5050 (admin@fraud.com / admin)
+   • Redis: localhost:6379
+
+7. Test API
+   curl -X POST "http://localhost:8000/login" \
+     -d "username=admin&password=admin123"
+   
+   # Copy token from response
+   curl -X GET "http://localhost:8000/profile" \
+     -H "Authorization: Bearer <token>"
+
+8. Stop services
+   docker-compose down
+
+
+================================================================================
+2. KUBERNETES DEPLOYMENT
+================================================================================
+
+Prerequisites:
+  • Kubernetes cluster (local k3s or cloud)
+  • kubectl installed
+  • Image registry (Docker Hub, ECR, GCR)
+
+Steps:
+
+1. Build and push image
+   docker build -t your-registry/fraud-detection:latest .
+   docker push your-registry/fraud-detection:latest
+
+2. Update kubernetes.yaml
+   sed -i 's|fraud-detection:latest|your-registry/fraud-detection:latest|g' kubernetes.yaml
+
+3. Create namespace and deploy
+   kubectl apply -f kubernetes.yaml
+
+4. Verify deployment
+   kubectl get pods -n fraud-detection
+   kubectl get svc -n fraud-detection
+
+5. Port forward (for local testing)
+   kubectl port-forward -n fraud-detection svc/fraud-detection-api 8000:8000
+
+6. Check logs
+   kubectl logs -n fraud-detection -l app=fraud-detection-api
+
+7. Scale deployment
+   kubectl scale deployment fraud-detection-api -n fraud-detection --replicas=5
+
+8. Delete deployment
+   kubectl delete namespace fraud-detection
+
+
+================================================================================
+3. AUTHENTICATION SETUP
+================================================================================
+
+Default Users (change in production):
+
+  Admin:
+    username: admin
+    password: admin123
+    role: admin (all permissions)
+
+  Reviewer:
+    username: reviewer
+    password: reviewer123
+    role: reviewer (review fraud cases)
+
+  Analyst:
+    username: analyst
+    password: analyst123
+    role: analyst (view metrics)
+
+Change Passwords:
+
+  1. Edit DEPLOYMENT_FILES/auth.py USERS_DB
+  2. Update passwords in deployment
+  3. Restart containers
+
+
+================================================================================
+4. DATABASE INTEGRATION
+================================================================================
+
+Tables Created:
+
+  1. transactions
+     - Stores transaction scores
+     - model predictions
+     - review decisions
+
+  2. fraud_cases
+     - Manual review cases
+     - Priority and status
+     - Assignment tracking
+
+  3. feedback_logs
+     - Human feedback
+     - Model accuracy tracking
+     - Drift detection
+
+  4. audit_logs
+     - Compliance audit trail
+     - User actions
+     - System events
+
+Database Operations:
+
+  1. Connect to PostgreSQL
+     psql postgresql://fraud_user:fraud_password_123@localhost:5432/fraud_detection
+
+  2. View transactions
+     SELECT * FROM transactions;
+
+  3. View pending reviews
+     SELECT * FROM fraud_cases WHERE status='PENDING';
+
+  4. Check feedback
+     SELECT * FROM feedback_logs;
+
+Backup Database:
+
+  # Backup
+  pg_dump postgresql://fraud_user:fraud_password@localhost:5432/fraud_detection > backup.sql
+
+  # Restore
+  psql postgresql://fraud_user:fraud_password@localhost:5432/fraud_detection < backup.sql
+
+
+================================================================================
+5. API ENDPOINTS
+================================================================================
+
+Authentication:
+  POST /login
+    body: {"username": "admin", "password": "admin123"}
+    response: {"access_token": "...", "token_type": "bearer"}
+
+  POST /token
+    Same as /login
+
+  GET /profile
+    headers: {"Authorization": "Bearer <token>"}
+    response: {"username": "...", "role": "..."}
+
+Fraud Detection:
+  POST /score
+    headers: {"Authorization": "Bearer <token>"}
+    body: {
+      "transaction_id": "TXN_123",
+      "customer_id": "CUST_456",
+      "merchant_id": "MERCH_789",
+      "amount": 1000.50,
+      "features": [...]
+    }
+    response: {
+      "fraud_prediction": true,
+      "fraud_probability": 0.87,
+      "risk_level": "HIGH"
+    }
+
+Review:
+  GET /pending-reviews
+    headers: {"Authorization": "Bearer <token>"}
+    response: list of pending fraud cases
+
+  POST /review/{transaction_id}
+    headers: {"Authorization": "Bearer <token>"}
+    body: {"decision": "APPROVED", "notes": "..."}
+
+Monitoring:
+  GET /dashboard
+  GET /health-status
+  GET /feedback-metrics
+
+Admin:
+  POST /retrain
+    body: {"reason": "accuracy degradation"}
+
+
+================================================================================
+6. PRODUCTION CHECKLIST
+================================================================================
+
+Security:
+  ☐ Change SECRET_KEY
+  ☐ Change all default passwords
+  ☐ Use HTTPS/TLS
+  ☐ Enable CORS only for trusted domains
+  ☐ Use strong database password
+  ☐ Enable database encryption
+  ☐ Implement rate limiting
+  ☐ Add request validation
+
+Database:
+  ☐ Setup automated backups
+  ☐ Enable database monitoring
+  ☐ Create indexes on frequently queried columns
+  ☐ Setup database replication
+  ☐ Monitor disk space
+  ☐ Configure retention policies
+
+Kubernetes:
+  ☐ Use resource quotas
+  ☐ Setup monitoring (Prometheus)
+  ☐ Setup logging (ELK stack)
+  ☐ Configure ingress
+  ☐ Setup network policies
+  ☐ Configure persistent volumes
+  ☐ Setup backup strategy
+
+Application:
+  ☐ Setup application monitoring
+  ☐ Setup performance tracking
+  ☐ Configure alerting
+  ☐ Setup log aggregation
+  ☐ Test disaster recovery
+  ☐ Document runbooks
+  ☐ Setup incident response
+
+
+================================================================================
+7. MONITORING & LOGGING
+================================================================================
+
+Docker Compose Logs:
+  docker-compose logs -f api
+  docker-compose logs -f postgres
+  docker-compose logs -f redis
+
+Kubernetes Logs:
+  kubectl logs -n fraud-detection -l app=fraud-detection-api -f
+  kubectl logs -n fraud-detection -l app=postgres
+
+Database Monitoring:
+  SELECT * FROM pg_stat_statements;
+  SELECT * FROM pg_database;
+
+Application Metrics:
+  GET /dashboard
+  GET /health-status
+  GET /feedback-metrics
+
+
+================================================================================
+8. TROUBLESHOOTING
+================================================================================
+
+Database Connection Error:
+  1. Check PostgreSQL is running
+  2. Verify credentials
+  3. Check network connectivity
+  4. Review connection string
+
+API Not Responding:
+  1. Check container logs
+  2. Verify port mappings
+  3. Check resource limits
+  4. Restart container
+
+Authentication Failed:
+  1. Verify token format
+  2. Check token expiration
+  3. Verify user role
+  4. Check SECRET_KEY
+
+Performance Issues:
+  1. Check database indexes
+  2. Monitor CPU/memory
+  3. Check query performance
+  4. Review logs for errors
+
+
+================================================================================
+9. DEPLOYMENT SCRIPTS
+================================================================================
+
+Deploy to Docker Compose:
+  chmod +x scripts/deploy-docker.sh
+  ./scripts/deploy-docker.sh
+
+Deploy to Kubernetes:
+  chmod +x scripts/deploy-k8s.sh
+  ./scripts/deploy-k8s.sh production
+
+Backup Database:
+  chmod +x scripts/backup-db.sh
+  ./scripts/backup-db.sh
+
+Restore Database:
+  chmod +x scripts/restore-db.sh
+  ./scripts/restore-db.sh backup.sql
+
+
+================================================================================
+10. SUPPORT & DOCUMENTATION
+================================================================================
+
+Files:
+  • models.py - Database models and DAOs
+  • auth.py - Authentication and authorization
+  • main.py - FastAPI application
+  • Dockerfile - Container image
+  • docker-compose.yml - Local development
+  • kubernetes.yaml - Kubernetes deployment
+  • requirements.txt - Python dependencies
+
+Next Steps:
+  1. Review deployment files
+  2. Customize for your environment
+  3. Test locally with Docker Compose
+  4. Deploy to Kubernetes cluster
+  5. Monitor in production
+
+================================================================================
